@@ -1,0 +1,12 @@
+{
+  "name": "upi",
+  "module": "mod.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@whatwg-node/server": "^0.9.49"
+  },
+  "peerDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
