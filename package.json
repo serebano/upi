@@ -1,10 +1,49 @@
 {
-  "name": "upi",
-  "module": "mod.ts",
+  "name": "@serebano/upi",
+  "version": "0.0.2",
   "type": "module",
+  "module": "./dist/mod.js",
+  "types": "./dist/mod.d.ts",
+  "repository": "https://github.com/serebano/upi",
+  "exports": {
+    ".": {
+      "import": "./dist/mod.js",
+      "default": "./src/mod.ts",
+      "types": "./dist/mod.d.ts"
+    },
+    "./serve": {
+      "import": "./dist/serve/index.js",
+      "default": "./src/serve/index.ts"
+    },
+    "./serve/node": {
+      "import": "./dist/serve/node.js",
+      "default": "./src/serve/node.ts"
+    },
+    "./serve/deno": {
+      "import": "./dist/serve/deno.js",
+      "default": "./src/serve/deno.ts"
+    },
+    "./serve/bun": {
+      "import": "./dist/serve/bun.js",
+      "default": "./src/serve/bun.ts"
+    }
+  },
+  "scripts": {
+    "dev:bun": "bun --watch --hot ./src/dev.ts",
+    "dev:deno": "deno --watch-hmr -A --env ./src/dev.ts",
+    "dev:node": "tsx --watch ./src/dev.ts",
+    "build": "pkgroll",
+    "build:dev": "pkgroll --watch"
+  },
+  "dependencies": {
+    "@serebano/upi": ".",
+    "@whatwg-node/server": "^0.9.49"
+  },
   "devDependencies": {
     "@types/bun": "latest",
-    "@whatwg-node/server": "^0.9.49"
+    "@types/deno": "latest",
+    "pkgroll": "^2.5.0",
+    "tsx": "^4.19.1"
   },
   "peerDependencies": {
     "typescript": "^5.5.0"

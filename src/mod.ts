@@ -1,33 +1,33 @@
 /**
- * RAPI - Remote Application Programming Interface
+ * UPI - Universal Programming Interface
  * 
  * @description  This module provides a framework for handling API requests and responses in a dynamic and flexible manner.
  *               It includes interfaces for defining API requests and responses, utility functions for error handling,
  *               and a mechanism for creating API proxies that can dynamically invoke methods on a remote target.
  * 
- * @module rapi
+ * @module upi
  * 
  * @example
  * ```typescript
- * import rapi from 'rapi';
+ * import upi from '@serebano/upi';
  * 
- * const api = rapi('http://example.com/api');
+ * const api = upi('http://example.com/api');
  * const result = await api.someMethod('arg1', 'arg2');
  * ```
  * 
  * @example
  * ```typescript
- * import rapi from 'rapi';
+ * import upi from '@serebano/upi';
  * 
- * const api = rapi('file://./myModule.ts');
+ * const api = upi('file://./myModule.ts');
  * const result = await api.someMethod('arg1', 'arg2');
  * ```
  */
 
-export const RAPI_ID_HEADER = 'X-RAPI-ID';
-export const RAPI_USER_AGENT = 'RAPI/1.0';
+export const UPI_ID_HEADER = 'X-UPI-ID';
+export const UPI_USER_AGENT = 'UPI/1.0';
 
-export default rapi;
+export default upi;
 
 /**
  * Creates a proxy for a given URL input based on its protocol.
@@ -43,7 +43,7 @@ export default rapi;
  * - 'file:'
  */
 
-export function rapi<T extends RAPITarget>(input: string | URL) {
+export function upi<T extends UPITarget>(input: string | URL) {
     const url = new URL(input)
 
     switch (url.protocol) {
@@ -67,7 +67,7 @@ export function rapi<T extends RAPITarget>(input: string | URL) {
  * @returns A function that takes a context and a request, imports the specified module,
  *          and handles the request using the imported module.
  */
-export function createLocalHandler(input: string | URL): RAPIHandler {
+export function createLocalHandler(input: string | URL): UPIHandler {
     return async function localHandler(_, request) {
         const url = import.meta.resolve(String(input))
         const mod = await import(url)
@@ -84,16 +84,16 @@ export function createLocalHandler(input: string | URL): RAPIHandler {
  * @param input - The URL or string to which the POST request will be sent.
  * @returns A function that handles the fetch request and returns the JSON response.
  *
- * @throws Will throw an error if the fetch request fails or if the response contains an invalid RAPI ID header.
+ * @throws Will throw an error if the fetch request fails or if the response contains an invalid UPI ID header.
  */
-export function createFetchHandler(input: string | URL): RAPIHandler {
+export function createFetchHandler(input: string | URL): UPIHandler {
     return async function fetchHandler(_, request) {
         const response = await fetch(input, {
             method: 'POST',
             headers: {
-                'User-Agent': RAPI_USER_AGENT,
+                'User-Agent': UPI_USER_AGENT,
                 'Content-Type': 'application/json',
-                RAPI_ID_HEADER: request.id,
+                UPI_ID_HEADER: request.id,
             },
             body: JSON.stringify({
                 path: request.path,
@@ -104,8 +104,8 @@ export function createFetchHandler(input: string | URL): RAPIHandler {
         if (!response.ok)
             throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
 
-        if (response.headers.get(RAPI_ID_HEADER) !== request.id)
-            throw new Error(`Invalid response: ${response.status}} { req=${request.id}, res=${response.headers.get(RAPI_ID_HEADER)} }`);
+        if (response.headers.get(UPI_ID_HEADER) !== request.id)
+            throw new Error(`Invalid response: ${response.status}} { req=${request.id}, res=${response.headers.get(UPI_ID_HEADER)} }`);
 
         return await response.json()
     }
@@ -116,7 +116,7 @@ export function createFetchHandler(input: string | URL): RAPIHandler {
  *
  * @template T - The type of the API target.
  * @param {T} target - The API target object to be proxied.
- * @param {RAPIHandler} handler - The handler function that processes API requests.
+ * @param {UPIHandler} handler - The handler function that processes API requests.
  * @returns {T} - A proxied version of the target object.
  *
  * @throws {UndefinedNotAllowedError} - If any of the arguments passed to the proxied function are `undefined`.
@@ -127,7 +127,7 @@ export function createFetchHandler(input: string | URL): RAPIHandler {
  * const result = await api.someMethod('arg1', 'arg2');
  * ```
  */
-export function proxy<T extends RAPITarget>(target: T, handler: RAPIHandler): T {
+export function proxy<T extends UPITarget>(target: T, handler: UPIHandler): T {
 
     function createProxyHandler(path: string[]): ProxyHandler<any> {
         const proxyHandler: ProxyHandler<any> = {
@@ -138,8 +138,8 @@ export function proxy<T extends RAPITarget>(target: T, handler: RAPIHandler): T 
                     if (args.includes(undefined))
                         throw new UndefinedNotAllowedError(`${prop}: undefined not allowed, use null instead`);
 
-                    const req: RAPIRequest = { id: uid(), path, args };
-                    const res: RAPIResponse = await handler(target, req);
+                    const req: UPIRequest = { id: uid(), path, args };
+                    const res: UPIResponse = await handler(target, req);
 
                     if (res.error)
                         throw stringToError(res.error);
@@ -165,7 +165,7 @@ export function proxy<T extends RAPITarget>(target: T, handler: RAPIHandler): T 
  *
  * @throws Will return an error response if the specified method is not found on the target object.
  */
-export async function handle(target: RAPITarget, request: RAPIRequest): Promise<RAPIResponse> {
+export async function handle(target: UPITarget, request: UPIRequest): Promise<UPIResponse> {
     const path = [...request.path || []];
     const prop = path.pop();
     const func = (prop
@@ -197,15 +197,128 @@ export async function handle(target: RAPITarget, request: RAPIRequest): Promise<
 
 
 
+/** 
+ * ----------------------------------------------------------------------------
+ * UPI Serve
+ * ----------------------------------------------------------------------------
+ */
 
+export type UPIServeOptions = {
+    port: number,
+    apiDir: string
+}
+
+export type UPIHandlerContext = {
+    readFile: (path: string) => Promise<BodyInit> | BodyInit,
+    readDir?: (path: string) => Promise<string[]>
+}
+
+export function createRequestHandler(PATH: string, ctx: UPIHandlerContext) {
+    ctx = Object.assign({
+        readFile: async (path: string) => {
+            throw new Error(`readFile not implemented: ${path}`)
+        }
+    }, ctx)
+
+    return async function handler(request: Request) {
+        const url = new URL(request.url)
+        const modPath = [PATH, url.pathname].join('')
+        const resolvedModPath = import.meta.resolve(modPath)
+
+        console.log(`[${request.method}]`, [request.url, resolvedModPath])
+
+        if (request.method === 'POST') {
+            const req = await request.json() as UPIRequest
+            const mod = await import(modPath)
+            const res = await handle(mod, req)
+
+            console.log('(POST)', { req, mod, res })
+
+            return Response.json(res, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    [UPI_ID_HEADER]: request.headers.get(UPI_ID_HEADER) || ''
+                }
+            })
+        }
+
+        if (request.method === 'GET') {
+            console.log('(GET)', modPath)
+            // serve upi.ts and upi.js
+            if (url.pathname === '/upi.ts' || url.pathname === '/upi.js' || url.pathname === '/upi') {
+                const resolvedModPath = import.meta.resolve('@serebano/upi')
+                const body = await ctx.readFile(resolvedModPath)
+                const contentType = resolvedModPath.endsWith('.ts')
+                    ? 'application/typescript'
+                    : 'application/javascript'
+
+                return new Response(body, {
+                    status: 200,
+                    headers: {
+                        'Content-Type': contentType
+                    }
+                })
+            }
+
+            try {
+                const mod = await import(modPath)
+                const module = url.pathname.endsWith('.mod.ts')
+                    ? await ctx.readFile(modPath.replace('.mod.ts', '.ts'))
+                    : modTemplate(url, mod)
+
+                return new Response(module, {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/typescript',
+                        [UPI_ID_HEADER]: request.headers.get(UPI_ID_HEADER) || ''
+                    }
+                })
+            } catch (error: any) {
+                return Response.json({ error: error.message, modPath }, { status: 500 })
+            }
+        }
+        return new Response(`(upi)`, { status: 404 })
+    }
+}
+
+export function modTemplate(url: string | URL, mod: any) {
+    url = new URL(url)
+    const modUrl = `..${url.pathname.replace('.upi.ts', '.ts')}`
+    const keys = Object.keys(mod).filter(key => key !== 'default')
+    const template = `
+        import upi from "@serebano/upi";
+
+        const mod = upi<typeof import('${modUrl}')>(import.meta.resolve('${modUrl}'))
+
+        export const { ${keys.join(', ')} } = mod
+        export default ${mod.default ? 'mod.default' : `mod`}`;
+
+    return template.split('\n').map(line => line.trim()).join('\n')
+}
 
 
 /**
- * RAPI Utils
+ * UPI Utils
  */
 
 
-function getDetails(target: any) {
+export type UPIEnv = 'browser' | 'node' | 'deno' | 'bun' | 'unknown'
+
+export const IS_BROWSER = typeof window !== 'undefined'
+export const IS_DENO = typeof Deno !== 'undefined'
+export const IS_BUN = typeof Bun !== 'undefined'
+export const IS_NODE = !IS_BUN && !IS_DENO && typeof process !== 'undefined' && 'node' in process.versions
+
+export function getEnv(): UPIEnv {
+    if (IS_BROWSER) return 'browser'
+    if (IS_NODE) return 'node'
+    if (IS_DENO) return 'deno'
+    if (IS_BUN) return 'bun'
+    return 'unknown'
+}
+
+export function getDetails(target: any) {
     return {
         ownKeys: Reflect.ownKeys(target),
         getPrototypeOf: Reflect.getPrototypeOf(target),
@@ -292,18 +405,18 @@ export function stringToError(s: string): Error {
 
 /**
  * ----------------------------------------------------------------------------
- * RAPI Types
+ * UPI Types
  */
 
 /**
  * Represents an API request.
  * 
- * @interface RAPIRequest
+ * @interface UPIRequest
  * @property {string} id - The unique identifier for the API request.
  * @property {string[]} path - The path segments of the API endpoint.
  * @property {any[]} args - The arguments to be passed with the API request.
  */
-export interface RAPIRequest {
+export interface UPIRequest {
     id: string
     path: string[]
     args: any[]
@@ -312,13 +425,13 @@ export interface RAPIRequest {
 /**
  * Represents the response from an API call.
  * 
- * @interface RAPIResponse
+ * @interface UPIResponse
  * @property {string} id - The unique identifier for the API response.
  * @property {string[]} path - The path segments of the API endpoint.
  * @property {any} [result] - The result of the API call, if successful.
  * @property {string} [error] - The error message, if the API call failed.
  */
-export interface RAPIResponse {
+export interface UPIResponse {
     id: string
     path: string[]
     result?: any
@@ -331,7 +444,7 @@ export interface RAPIResponse {
  * @property {string} key - The key representing the target.
  * @property {any} value - The value associated with the key.
  */
-export type RAPITarget = Record<string, any>;
+export type UPITarget = Record<string, any>;
 
 /**
  * Represents a handler function for API requests.
@@ -340,4 +453,4 @@ export type RAPITarget = Record<string, any>;
  * @param request - The API request object.
  * @returns A promise that resolves to an API response.
  */
-export type RAPIHandler = (target: RAPITarget, request: RAPIRequest) => Promise<RAPIResponse>;
+export type UPIHandler = (target: UPITarget, request: UPIRequest) => Promise<UPIResponse>;
