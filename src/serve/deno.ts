@@ -1,12 +1,9 @@
-/// <reference lib="deno.ns" />
-/// <reference lib="dom" />
-
 import { createRequestHandler } from "../mod.ts";
-import type { UPIServeOptions } from "../mod.ts";
+import type { ServeOptions } from "../mod.ts";
 
 export type DenoServer = Deno.HttpServer<Deno.NetAddr>
 
-export function serve(options: UPIServeOptions): DenoServer {
+export function serve(options: ServeOptions): DenoServer {
     return Deno.serve({
         port: options.port,
         handler: createRequestHandler(options.apiDir, { readFile, readDir }),

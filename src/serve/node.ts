@@ -1,22 +1,47 @@
-import { createServer, type Server } from 'node:http'
-import { createServerAdapter } from '@whatwg-node/server'
-import { createRequestHandler, type UPIServeOptions } from '../mod.ts'
+// import { createServer } from 'node:http'
+// import { createServerAdapter } from '@whatwg-node/server'
+import { createRequestHandler, type ServeOptions } from '../mod.ts'
+import type { Server } from 'node:http'
+
+export type NodeServeOptions = {
+    port: number,
+    fetch: (request: Request) => Promise<Response> | Response,
+    onListening?: (addr: { port: number, address: string }) => void,
+    onError?: (error: Error) => void
+}
 
 export type NodeServer = Server
 
-export function serve(options: UPIServeOptions): NodeServer {
-    const requestHandler = createRequestHandler(options.apiDir, { readFile, readDir })
-    const nodeRequestHandler = createServerAdapter(requestHandler)
-    const server = createServer(nodeRequestHandler)
+const Node = {
+    async serve(options: NodeServeOptions): Promise<NodeServer> {
+        const { createServer } = await import('node:http')
+        const { createServerAdapter } = await import('@whatwg-node/server')
 
-    server.on('listening', () => {
-        console.log('(upi/node) serving:', {
-            apiDir: options.apiDir,
-            endpoint: `http://localhost:${options.port}`
+        const nodeRequestHandler = createServerAdapter(options.fetch)
+        const server = createServer(nodeRequestHandler)
+
+        server.on('error', (err) => options.onError?.(err))
+        server.on('listening', () => {
+            options.onListening?.(server.address() as { port: number, address: string })
         })
-    })
 
-    return server.listen(options.port)
+        return server.listen(options.port)
+    }
+
+}
+export function serve(options: ServeOptions): Promise<NodeServer> {
+    const requestHandler = createRequestHandler(options.apiDir, { readFile, readDir })
+
+    return Node.serve({
+        port: options.port,
+        fetch: requestHandler,
+        onListening: (addr) => {
+            console.log('(upi/node) serving:', {
+                apiDir: options.apiDir,
+                endpoint: `http://${addr.address}:${addr.port}`
+            })
+        }
+    })
 }
 
 export async function readFile(filePath: string): Promise<ReadableStream> {

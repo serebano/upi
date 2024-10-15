@@ -43,7 +43,7 @@ export default upi;
  * - 'file:'
  */
 
-export function upi<T extends UPITarget>(input: string | URL) {
+export function upi<T extends UPITarget>(input: string | URL): T {
     const url = new URL(input)
 
     switch (url.protocol) {
@@ -203,17 +203,17 @@ export async function handle(target: UPITarget, request: UPIRequest): Promise<UP
  * ----------------------------------------------------------------------------
  */
 
-export type UPIServeOptions = {
+export type ServeOptions = {
     port: number,
     apiDir: string
 }
 
-export type UPIHandlerContext = {
+export type HandlerContext = {
     readFile: (path: string) => Promise<BodyInit> | BodyInit,
     readDir?: (path: string) => Promise<string[]>
 }
 
-export function createRequestHandler(PATH: string, ctx: UPIHandlerContext) {
+export function createRequestHandler(PATH: string, ctx: HandlerContext): (request: Request) => Promise<Response> {
     ctx = Object.assign({
         readFile: async (path: string) => {
             throw new Error(`readFile not implemented: ${path}`)
@@ -245,6 +245,13 @@ export function createRequestHandler(PATH: string, ctx: UPIHandlerContext) {
 
         if (request.method === 'GET') {
             console.log('(GET)', modPath)
+
+            if (url.pathname.endsWith('/')) {
+                const files = (ctx.readDir ? await ctx.readDir(modPath) : []).map(file => modPath + file)
+
+                return Response.json({ modPath, files, PATH })
+            }
+
             // serve upi.ts and upi.js
             if (url.pathname === '/upi.ts' || url.pathname === '/upi.js' || url.pathname === '/upi') {
                 const resolvedModPath = import.meta.resolve('@serebano/upi')
@@ -270,21 +277,21 @@ export function createRequestHandler(PATH: string, ctx: UPIHandlerContext) {
                 return new Response(module, {
                     status: 200,
                     headers: {
-                        'Content-Type': 'application/typescript',
-                        [UPI_ID_HEADER]: request.headers.get(UPI_ID_HEADER) || ''
+                        'Content-Type': 'application/typescript'
                     }
                 })
             } catch (error: any) {
                 return Response.json({ error: error.message, modPath }, { status: 500 })
             }
         }
-        return new Response(`(upi)`, { status: 404 })
+
+        return Response.json({ error: 'Method not allowed' }, { status: 405 })
     }
 }
 
-export function modTemplate(url: string | URL, mod: any) {
+export function modTemplate(url: string | URL, mod: any): string {
     url = new URL(url)
-    const modUrl = `..${url.pathname.replace('.upi.ts', '.ts')}`
+    const modUrl = `.${url.pathname.replace('.upi.ts', '.ts')}`
     const keys = Object.keys(mod).filter(key => key !== 'default')
     const template = `
         import upi from "@serebano/upi";
@@ -305,10 +312,11 @@ export function modTemplate(url: string | URL, mod: any) {
 
 export type UPIEnv = 'browser' | 'node' | 'deno' | 'bun' | 'unknown'
 
-export const IS_BROWSER = typeof window !== 'undefined'
-export const IS_DENO = typeof Deno !== 'undefined'
-export const IS_BUN = typeof Bun !== 'undefined'
-export const IS_NODE = !IS_BUN && !IS_DENO && typeof process !== 'undefined' && 'node' in process.versions
+export const IS_BROWSER = 'window' in globalThis
+export const IS_DENO = 'Deno' in globalThis
+export const IS_BUN = "Bun" in globalThis
+// @ts-ignore
+export const IS_NODE = !IS_BUN && !IS_DENO && ('process' in globalThis) && 'node' in process.versions
 
 export function getEnv(): UPIEnv {
     if (IS_BROWSER) return 'browser'
@@ -318,7 +326,7 @@ export function getEnv(): UPIEnv {
     return 'unknown'
 }
 
-export function getDetails(target: any) {
+export function getDetails(target: any): { ownKeys: (string | symbol)[]; getPrototypeOf: object | null; getOwnPropertyDescriptors: any; } {
     return {
         ownKeys: Reflect.ownKeys(target),
         getPrototypeOf: Reflect.getPrototypeOf(target),

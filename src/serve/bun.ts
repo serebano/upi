@@ -1,10 +1,12 @@
-import type { Server } from "bun";
+
 import { createRequestHandler } from "../mod.ts";
-import type { UPIServeOptions } from "../mod.ts";
+import type { ServeOptions } from "../mod.ts";
 
-export type BunServer = Server
+// @ts-ignore
+export type BunServer = ReturnType<typeof Bun.serve>
 
-export function serve(options: UPIServeOptions): BunServer {
+export function serve(options: ServeOptions): BunServer {
+    // @ts-ignore
     const server = Bun.serve({
         port: options.port,
         fetch: createRequestHandler(options.apiDir, { readFile })
@@ -19,6 +21,7 @@ export function serve(options: UPIServeOptions): BunServer {
 }
 
 export function readFile(filePath: string): ReadableStream<Uint8Array> {
+    // @ts-ignore
     return Bun.file(filePath).stream()
 }
 

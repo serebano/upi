@@ -1,6 +1,6 @@
-import { getEnv, type UPIServeOptions } from '../mod.ts'
+import { getEnv, type ServeOptions } from '../mod.ts'
 
-export type UPIServer =
+export type Server =
     | import('./node.ts').NodeServer
     | import('./deno.ts').DenoServer
     | import('./bun.ts').BunServer
@@ -10,20 +10,16 @@ export type UPIServer =
  *
  * Depending on the environment, this function dynamically imports and starts the appropriate server.
  *
- * @param {UPIServeOptions} options - The options to configure the server.
- * @returns {Promise<UPIServer>} 
+ * @param {ServeOptions} options - The options to configure the server.
+ * @returns {Promise<Server>} 
  * A promise that resolves to the server instance for the current environment.
  * @throws {Error} If the environment is unknown.
  */
-export async function serve(options: UPIServeOptions): Promise<UPIServer> {
-    switch (getEnv()) {
-        case 'node':
-            return import('./node.ts').then(({ serve }) => serve(options))
-        case 'deno':
-            return import('./deno.ts').then(({ serve }) => serve(options))
-        case 'bun':
-            return import('./bun.ts').then(({ serve }) => serve(options))
-        default:
-            throw new Error('Unknown environment')
-    }
+export async function serve(options: ServeOptions): Promise<Server> {
+    const env = getEnv()
+
+    if (!['node', 'deno', 'bun'].includes(env))
+        throw new Error('Unknown environment')
+
+    return import(`./${env}.ts`).then(mod => mod.serve(options))
 }
